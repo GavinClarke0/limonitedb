@@ -1,10 +1,10 @@
-use std::cell::{Ref, RefCell};
-use std::cmp::{max, Ordering};
+
+use std::cmp::{max};
 use std::fmt::Display;
 use std::marker::PhantomData;
-use std::mem;
+
 use std::ptr::NonNull;
-use std::rc::Rc;
+
 use crate::memtable::skiplist::{SkipList, SkipListIterator};
 
 const INSERT_BUFFER_SIZE: usize = 2_usize.pow(2);
@@ -161,7 +161,7 @@ impl<Key: Ord + Display, const MAX_HEIGHT: usize> SkipList<Key> for LinkedListSk
         unsafe {
             if let Some(_) = insert_after_node {
                 // Case where list is not empty.
-                let mut node = Node::new_link(key, height);
+                let node = Node::new_link(key, height);
                 for i in 0..self.current_height {
                     let previous = self.previous[i].unwrap().as_ptr();
                     (*node.as_ptr()).set_next(i, (*previous).next(i));
@@ -174,7 +174,7 @@ impl<Key: Ord + Display, const MAX_HEIGHT: usize> SkipList<Key> for LinkedListSk
 
             } else {
                 // Case where list is empty or value is smallest in list.
-                let mut node = Node::new_link(key, max_height);
+                let node = Node::new_link(key, max_height);
                 for i in 0..self.current_height {
                     (*node.as_ptr()).set_next(i, (*self.head.unwrap().as_ptr()).next(i));
                 }
@@ -191,7 +191,7 @@ impl<Key: Ord + Display, const MAX_HEIGHT: usize> SkipList<Key> for LinkedListSk
         return self.find_node(key).is_some();
     }
 
-    fn estimate_count(&self, key: &Key) -> u64 {
+    fn estimate_count(&self, _key: &Key) -> u64 {
         todo!()
     }
 }
@@ -226,11 +226,11 @@ impl<Key: Ord, const MAX_HEIGHT: usize> SkipListIterator<Key> for LinkedListSkip
         unimplemented!() // Requires backward links or a stack to track history
     }
 
-    fn seek(&mut self, target: &Key) {
+    fn seek(&mut self, _target: &Key) {
         unimplemented!()
     }
 
-    fn seek_for_prev(&mut self, target: &Key) {
+    fn seek_for_prev(&mut self, _target: &Key) {
         unimplemented!() // Requires backward links or additional tracking
     }
 
@@ -291,7 +291,7 @@ mod tests {
     fn test_insert_and_contains() {
         let mut list: LinkedListSkipList<i32, {2^12}> = LinkedListSkipList::new();
 
-        for i in 0..100 {
+        for _i in 0..100 {
             list.insert(fastrand::i32(0..100000));
         }
         list.print();
