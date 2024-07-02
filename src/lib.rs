@@ -1,14 +1,11 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
+mod memtable {
+    mod skiplist;
+    mod linkedlist_skiplist;
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+mod wal {
+    mod wal;
+    mod wal_manager;
 }
+mod limonitedb;
+
+
