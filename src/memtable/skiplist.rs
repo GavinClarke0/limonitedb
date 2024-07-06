@@ -1,7 +1,4 @@
 
-
-
-
 pub trait SkipList<Key: Ord> {
 
     /// Inserts a key into the list.
@@ -12,7 +9,7 @@ pub trait SkipList<Key: Ord> {
     fn contains(&self, key: &Key) -> bool;
 
     /// Returns the estimated number of entries smaller than `key`.
-    fn estimate_count(&self, key: &Key) -> u64;
+    fn estimate_count(&self, key: &Key) -> usize;
 }
 
 pub trait SkipListIterator<Key>: Iterator<Item = Key> {
