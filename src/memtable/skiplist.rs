@@ -18,21 +18,21 @@ pub trait SkipListIterator<Key>: Iterator<Item = Key> {
 
     /// Returns the key at the current position.
     /// Requires that the iterator is valid.
-    fn key(&self) -> &Key;
+    fn key(&self) -> Option<Key>;
 
-    /// Advances to the next position.
-    /// Requires that the iterator is valid.
-    fn next(&mut self);
+    /// Advances to the next position. Used in place of next which needs to be defined for the
+    /// super trait. Requires that the iterator is valid.
+    fn advance(&mut self) ;
 
     /// Advances to the previous position.
     /// Requires that the iterator is valid.
     fn prev(&mut self);
 
     /// Advance to the first entry with a key >= target.
-    fn seek(&mut self, target: &Key);
+    fn seek(&mut self, target: Key);
 
     /// Retreat to the last entry with a key <= target.
-    fn seek_for_prev(&mut self, target: &Key);
+    fn seek_for_prev(&mut self, target: Key);
 
     /// Position at the first entry in list.
     /// Final state of iterator is Valid() iff list is not empty.
@@ -41,4 +41,5 @@ pub trait SkipListIterator<Key>: Iterator<Item = Key> {
     /// Position at the last entry in list.
     /// Final state of iterator is Valid() iff list is not empty.
     fn seek_to_last(&mut self);
+    type Item;
 }

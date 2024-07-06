@@ -1,28 +1,23 @@
 use std::cmp::{max};
 use std::fmt::Display;
 use std::marker::PhantomData;
-
-use std::ptr::{NonNull, null};
+use std::ptr::{NonNull};
 
 use crate::memtable::skiplist::{SkipList, SkipListIterator};
 
-const INSERT_BUFFER_SIZE: usize = 2_usize.pow(2);
-
-pub struct LinkedListSkipList<Key: Ord + Display + Default, const MAX_HEIGHT: usize> where
+pub struct LinkedListSkipList<'a, Key: Ord + Display + Default, const MAX_HEIGHT: usize> where
     Key: Ord,
 {
     head: NonNull<Node<Key>>,
-    previous: [NonNull<Node<Key>>; MAX_HEIGHT],
     current_height: usize,
     current_size: usize,
-    _marker: PhantomData<Key>,
+    _marker: PhantomData<&'a Key>,
 }
 
-impl<Key: Ord + Display + Default, const MAX_HEIGHT: usize> LinkedListSkipList<Key, MAX_HEIGHT> {
+impl<'a, Key: Ord + Display + Default, const MAX_HEIGHT: usize> LinkedListSkipList<'a, Key, MAX_HEIGHT> {
     fn new() -> Self {
         Self {
             head: Node::new_head(MAX_HEIGHT),
-            previous: std::array::from_fn(|_| NonNull::<Node<Key>>::dangling()),
             current_height: 0,
             current_size: 0,
             _marker: PhantomData,
@@ -66,9 +61,42 @@ impl<Key: Ord + Display + Default, const MAX_HEIGHT: usize> LinkedListSkipList<K
         }
     }
 
+    // find the node that is equal or closest greatest value. Useful for iteration.
+    fn find_equal_or_greater_then(&self, key: &Key) -> Link<Key> {
+        unsafe {
+            // 1. Case where node is the smallest or other nodes exist in the tree
+            if self.current_height == 0 || (*self.head_next(0).unwrap().as_ptr()).key > *key {
+                return None;
+            }
+            // 2. Search the rest of the list.
+            let mut search_level = self.current_height - 1;
+            let mut current_node = self.head;
+            loop {
+                match (*current_node.as_ptr()).next(search_level) {
+                    None => {
+                        if search_level == 0 {
+                            return None;
+                        }
+                        search_level -= 1;
+                    }
+                    Some(next_node) => {
+                        if (*next_node.as_ptr()).key >= *key {
+                            if (*next_node.as_ptr()).key == *key || search_level == 0 {
+                                return Some(next_node);
+                            }
+                            search_level -= 1;
+                        } else {
+                            current_node = next_node;
+                        }
+                    }
+                };
+            }
+        }
+    }
+
     #[inline(always)]
     fn get_max_height(&self) -> usize {
-        return self.current_height;
+        self.current_height
     }
 
     #[inline(always)]
@@ -77,7 +105,7 @@ impl<Key: Ord + Display + Default, const MAX_HEIGHT: usize> LinkedListSkipList<K
         while height < MAX_HEIGHT && fastrand::bool() {
             height += 1
         }
-        return height;
+        height
     }
 
     #[inline(always)]
@@ -101,7 +129,7 @@ impl<Key: Ord + Display + Default, const MAX_HEIGHT: usize> LinkedListSkipList<K
                             next_node = (*node.as_ptr()).next(i);
                         }
                         None => {
-                            print!("-> None\n");
+                            println!("-> None");
                             break;
                         }
                     }
@@ -111,7 +139,7 @@ impl<Key: Ord + Display + Default, const MAX_HEIGHT: usize> LinkedListSkipList<K
     }
 }
 
-impl<Key: Ord + Display + Default, const MAX_HEIGHT: usize> SkipList<Key> for LinkedListSkipList<Key, MAX_HEIGHT>
+impl<'a, Key: Ord + Display + Default, const MAX_HEIGHT: usize> SkipList<Key> for LinkedListSkipList<'a, Key, MAX_HEIGHT>
 {
     fn insert(&mut self, key: Key) {
         let (node, previous) = self.find_equal_or_less_then(&key); // This must run so self.previous is populated
@@ -146,12 +174,12 @@ impl<Key: Ord + Display + Default, const MAX_HEIGHT: usize> SkipList<Key> for Li
     }
 }
 
-impl<Key: Ord + Display + Default, const MAX_HEIGHT: usize> Drop for LinkedListSkipList<Key, MAX_HEIGHT> {
+impl<'a, Key: Ord + Display + Default, const MAX_HEIGHT: usize> Drop for LinkedListSkipList<'a, Key, MAX_HEIGHT> {
     fn drop(&mut self) {
         unsafe {
             // Start from the head of the list  // Iterate over each node and deallocate it
             let mut current_node = self.head_next(0);
-            while let Some(mut node) = current_node {
+            while let Some(node) = current_node {
                 current_node = (*node.as_ptr()).next(0);
                 drop(Box::from_raw(node.as_ptr()));
             }
@@ -160,36 +188,72 @@ impl<Key: Ord + Display + Default, const MAX_HEIGHT: usize> Drop for LinkedListS
     }
 }
 
-trait ListNode<Key: Ord> {
-    fn set_next(&mut self, n: usize, x: Link<Key>);
-    fn next(&self, n: usize) -> Link<Key>;
-}
-
-
-impl<Key: Ord + Default + Display, const MAX_HEIGHT: usize> Iterator for LinkedListSkipList<Key, MAX_HEIGHT>
+impl<'a, Key: Ord + Display + Default, const MAX_HEIGHT: usize> IntoIterator for LinkedListSkipList<'a, Key, MAX_HEIGHT>
     where
         Key: Ord,
 {
-    type Item = Key;
+    type Item = &'a Key;
+    type IntoIter = LinkedListSkipListIterator<'a, Key, MAX_HEIGHT>;
 
-    fn next(&mut self) -> Option<Self::Item> {
-
-        unimplemented!()
+    fn into_iter(self) -> Self::IntoIter {
+        LinkedListSkipListIterator {
+            current: Some(self.head),
+            skip_list: self,
+        }
     }
 }
 
-impl<Key: Ord + Default + Display, const MAX_HEIGHT: usize> SkipListIterator<Key> for LinkedListSkipList<Key, MAX_HEIGHT>
+pub struct LinkedListSkipListIterator<'a, Key: Ord + Display + Default, const MAX_HEIGHT: usize>
+    where
+        Key: Ord,
+{
+    skip_list: LinkedListSkipList<'a, Key, MAX_HEIGHT>,
+    current: Link<Key>,
+}
+
+
+impl<'a, Key: Ord + Default + Display, const MAX_HEIGHT: usize> Iterator for LinkedListSkipListIterator<'a, Key, MAX_HEIGHT> {
+    type Item = &'a Key;
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            let next_node =  (*self.current.unwrap().as_ptr()).links[0];
+            return match next_node {
+                Some(next_node_val) => {
+                    self.current = next_node;
+                    let next_key = &next_node_val.as_ref().key;
+                    Some(next_key)
+                },
+                None => None
+            };
+        }
+    }
+}
+
+impl<'a, Key: Ord + Default + Display, const MAX_HEIGHT: usize> SkipListIterator<&'a Key> for LinkedListSkipListIterator<'a, Key, MAX_HEIGHT>
 {
     fn valid(&self) -> bool {
-        unimplemented!()
+        self.current.is_some()
     }
 
-    fn key(&self) -> &Key {
-        unimplemented!()
+    fn key(&self) -> Option<&'a Key> {
+        unsafe {
+            return match self.current.as_ref() {
+                Some(current) =>  Some(&current.as_ref().key),
+                None => None
+            }
+        }
     }
 
-    fn next(&mut self) {
-        unimplemented!()
+    fn advance(&mut self) {
+        unsafe {
+            let next_node =  (*self.current.unwrap().as_ptr()).links[0];
+            match next_node {
+                Some(_) => {
+                    self.current = next_node;
+                },
+                None => ()
+            };
+        }
     }
 
     fn prev(&mut self) {
@@ -197,7 +261,13 @@ impl<Key: Ord + Default + Display, const MAX_HEIGHT: usize> SkipListIterator<Key
     }
 
     fn seek(&mut self, _target: &Key) {
-        unimplemented!()
+        let target_node = self.skip_list.find_equal_or_greater_then(_target);
+        match target_node {
+            Some(_) => {
+                self.current = target_node;
+            },
+            None => () //TODO: return a error/option if our key is less then all values
+        }
     }
 
     fn seek_for_prev(&mut self, _target: &Key) {
@@ -205,14 +275,15 @@ impl<Key: Ord + Default + Display, const MAX_HEIGHT: usize> SkipListIterator<Key
     }
 
     fn seek_to_first(&mut self) {
-        unimplemented!() // Requires access to the list's head
+        self.current = Some(self.skip_list.head);
     }
 
     fn seek_to_last(&mut self) {
         unimplemented!() // Requires full scan or back pointers
     }
-}
 
+    type Item = Key;
+}
 
 struct Node<Key: Ord> {
     key: Key,
@@ -231,19 +302,19 @@ impl<'a, Key: Ord + Default> Node<Key> {
 
     fn new_link(key: Key, height: usize) -> NonNull<Node<Key>> {
         unsafe {
-            return NonNull::new_unchecked(Box::into_raw(Box::new(Node {
+            NonNull::new_unchecked(Box::into_raw(Box::new(Node {
                 key,
                 links: vec![None; height],
-            })));
+            })))
         }
     }
 
     fn new_head(height: usize) -> NonNull<Node<Key>> {
         unsafe {
-            return NonNull::new_unchecked(Box::into_raw(Box::new(Node {
+            NonNull::new_unchecked(Box::into_raw(Box::new(Node {
                 key: Key::default(),
                 links: vec![None; height],
-            })));
+            })))
         }
     }
 
@@ -255,10 +326,9 @@ impl<'a, Key: Ord + Default> Node<Key> {
     #[inline(always)]
     fn next(&self, n: usize) -> Link<Key> {
         debug_assert!(n < self.links.len());
-        return self.links[n];
+        self.links[n]
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -281,6 +351,32 @@ mod tests {
             list.insert(val);
             assert!(list.contains(&val));
         }
+    }
+
+    #[test]
+    fn test_into_iterator() {
+        let mut list: LinkedListSkipList<i32, { 2_usize.pow(6) }> = LinkedListSkipList::new();
+        for _i in 0..100 {
+            list.insert(_i);
+        }
+
+        let mut expected_val  = 0;
+        let iter = list.into_iter();
+        for _i in iter {
+            assert_eq!(&expected_val, _i);
+            expected_val += 1;
+        }
+    }
+
+    #[test]
+    fn test_iterator_seek() {
+        let mut list: LinkedListSkipList<i32, { 2_usize.pow(6) }> = LinkedListSkipList::new();
+        for _i in 0..100 {
+            list.insert(_i);
+        }
+        let mut iter = list.into_iter();
+        iter.seek(&50);
+        assert_eq!(iter.key().unwrap(), &50);
     }
 }
 
